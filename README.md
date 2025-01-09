@@ -1,184 +1,160 @@
 # SnapAttend
 
-SnapAttend is an AI-powered smart attendance system that leverages facial recognition technology to automate attendance tracking. By simply uploading a photo (or multiple photos) of a classroom, SnapAttend identifies students and marks their attendance with high accuracy.
-
-## Features
-
-- **Face Recognition**: Automatically detect and identify students from a photo.
-- **Batch Processing**: Supports single or multiple photos for larger classes.
-- **Real-time Attendance**: Option to integrate with webcams for live attendance.
-- **User-Friendly Dashboard**: Upload photos, view attendance reports, and export data.
-- **Customizable**: Add, update, or delete student profiles easily.
-- **Offline/Online Support**: Works offline with pre-stored data or online with cloud-based storage.
+**SnapAttend** is an AI-powered attendance system that uses facial recognition to mark attendance from a single or multiple classroom photos. By integrating facial recognition directly into a Next.js application, SnapAttend provides a seamless and efficient solution for managing student attendance.
 
 ---
 
-## How It Works
+## Features
 
-1. **Student Registration**: Capture and register student photos. The system generates and stores unique face embeddings for each student.
-2. **Photo Upload**: Teachers upload class photos to the system.
-3. **Face Detection & Recognition**: SnapAttend detects faces in the photos and matches them against the stored embeddings.
-4. **Attendance Marking**: The system marks students as "Present" or "Absent" based on the match results.
-5. **Export Reports**: Export attendance data in CSV or PDF format for record-keeping.
+- **Automated Attendance:** Simply upload a photo of the classroom, and SnapAttend will automatically detect students and mark their attendance.
+- **Integrated Backend & Frontend:** Built entirely with JavaScript using the Next.js 15 App Router.
+- **Student Registration:** Register students with their names, roll numbers, and face embeddings.
+- **Fast & Accurate Facial Recognition:** Uses TensorFlow.js and Face-API.js for real-time face detection and recognition.
+- **Database Management:** Stores student data and attendance records in MongoDB.
+- **Scalable Solution:** Supports multiple photos for large classrooms and scalable deployments.
 
 ---
 
 ## Tech Stack
 
-- **Frontend**: React.js / React Native for the user interface.
-- **Backend**: Flask/Django/FastAPI for API development.
-- **Database**: MongoDB/MySQL/PostgreSQL for storing student data.
-- **Facial Recognition**: `face_recognition`, OpenCV, TensorFlow.
-- **Other Tools**: NumPy, Pandas for data processing.
+- **Frontend & Backend:** [Next.js 15 (App Router)](https://nextjs.org/)
+- **Facial Recognition:** [Face-API.js](https://github.com/justadudewhohacks/face-api.js), [TensorFlow.js](https://www.tensorflow.org/js)
+- **Database:** [MongoDB](https://www.mongodb.com/)
+- **Image Upload Handling:** [Multer](https://github.com/expressjs/multer)
 
 ---
 
 ## Installation
 
+### Prerequisites
+- Node.js (v18 or above)
+- MongoDB (Cloud or Local Instance)
+
+### Steps
+
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/snapattend.git
+   git clone https://github.com/yourusername/snapattend.git
    cd snapattend
+   ```
 
-2. Install the required dependencies:
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-pip install -r requirements.txt
+3. Set up environment variables:
+   Create a `.env.local` file in the root directory and add the following:
+   ```env
+   MONGO_URI=your_mongodb_connection_string
+   ```
 
+4. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-3. Set up the database:
-
-Create a database and configure it in the .env file.
-
-
-
-4. Run the application:
-
-python app.py
-
-
-5. Access the app at:
-
-For web: http://localhost:5000
-
-For mobile: Open the React Native app in your emulator.
-
-
-
-
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-Usage
+## Usage
 
-1. Register students:
+### 1. Register Students
+- Navigate to `/register` and fill out the form with the student’s name, roll number, and upload their photo.
+- The system will store the face embeddings in the database.
 
-Upload individual photos of students.
-
-Enter their names and roll numbers.
-
-The system will save their face embeddings.
-
-
-
-2. Upload class photos:
-
-Teachers can upload a photo of the entire classroom.
-
-For larger classes, upload multiple photos from different angles.
-
-
-
-3. Generate attendance:
-
-The system will process the photo(s) and identify students.
-
-View attendance records on the dashboard or export them.
-
-
-
-
+### 2. Mark Attendance
+- Navigate to `/attendance` and upload a classroom photo.
+- The system will process the image, match the faces, and generate the attendance list.
 
 ---
 
-Future Enhancements
+## API Endpoints
 
-Multi-Class Support: Add attendance for multiple classes in a single session.
+### **1. Student Registration**
+- **Endpoint:** `/api/register`
+- **Method:** `POST`
+- **Request Body:**
+  ```json
+  {
+    "name": "John Doe",
+    "rollNumber": "123",
+    "file": "<image_file>"
+  }
+  ```
+- **Response:**
+  ```json
+  {
+    "message": "Student registered successfully"
+  }
+  ```
 
-Advanced Reporting: Generate detailed analytics like attendance trends and summaries.
-
-Mobile App: A dedicated app for teachers to capture photos and manage attendance on the go.
-
-Integration: Sync with Learning Management Systems (LMS) for seamless attendance tracking.
-
-
+### **2. Mark Attendance**
+- **Endpoint:** `/api/attendance`
+- **Method:** `POST`
+- **Request Body:**
+  ```json
+  {
+    "file": "<classroom_photo_file>"
+  }
+  ```
+- **Response:**
+  ```json
+  [
+    { "rollNumber": "123", "name": "John Doe", "present": true },
+    { "rollNumber": "124", "name": "Jane Doe", "present": false }
+  ]
+  ```
 
 ---
 
-Contributing
+## Future Enhancements
 
-Contributions are welcome! Follow these steps to contribute:
+- **Real-Time Attendance:** Add support for live video feeds.
+- **Performance Optimization:** Improve face detection speed for large classrooms.
+- **Admin Dashboard:** Provide an interface to view and export attendance reports.
+- **Multi-Class Support:** Allow managing multiple classes and sections.
+
+---
+
+## Contributing
+
+Contributions are welcome! Feel free to open an issue or submit a pull request.
 
 1. Fork the repository.
-
-
 2. Create a new branch:
-
-git checkout -b feature-name
-
-
+   ```bash
+   git checkout -b feature-name
+   ```
 3. Commit your changes:
-
-git commit -m "Added new feature"
-
-
-4. Push to the branch:
-
-git push origin feature-name
-
-
+   ```bash
+   git commit -m "Add a feature"
+   ```
+4. Push the branch:
+   ```bash
+   git push origin feature-name
+   ```
 5. Open a pull request.
 
+---
 
+## License
 
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-License
+## Contact
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
-
-
----
-
-Contact
-
-Author: Shaswat Raj
-
-Email: sh20raj@gmail.com
-
-GitHub: @sh20raj
-
-Portfolio: shaswat.live
-
-
+For any inquiries, contact:
+- **Name:** Shaswat Raj
+- **Email:** sh20raj@gmail.com
 
 ---
 
-Screenshots (Optional)
+## Demo
 
-Add screenshots of the app for better understanding.
-
-
----
-
-Acknowledgements
-
-Inspired by the need to simplify attendance tracking in classrooms.
-
-Special thanks to the developers and contributors of the libraries and frameworks used.
-
+Coming soon...
 
 ---
-
-### Why "SnapAttend"?  
-The name is catchy, simple, and impactful. It conveys the idea of snapping a photo (Snap) to take attendance (Attend). It's modern, intuitive, and aligns with the functionality of the system.
