@@ -1,0 +1,10 @@
+face-recognition
+opencv-python
+numpy
+Flask
+Flask-SQLAlchemy
+Flask-Login
+Pillow
+python-dotenv
+dlib
+pandas
