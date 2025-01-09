@@ -11,17 +11,22 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import Webcam from "react-webcam"
 import { jsPDF } from "jspdf"
 import { formatDate, createPDFContent } from "@/lib/utils"
+import { processImage } from "@/lib/faceRecognition"
+import { useToast } from "@/hooks/use-toast"
 
 export default function CameraAttendance() {
   const searchParams = useSearchParams()
   const section = searchParams.get('section')
   const dateParam = searchParams.get('date')
+  const { toast } = useToast()
 
   const [students, setStudents] = useState([])
   const [showCamera, setShowCamera] = useState(false)
   const [uploadedImage, setUploadedImage] = useState(null)
+  const [processing, setProcessing] = useState(false)
   const webcamRef = useRef(null)
   const fileInputRef = useRef(null)
+  const imageRef = useRef(null)
 
   useEffect(() => {
     if (section && STUDENTS_BY_SECTION[section]) {
@@ -32,36 +37,84 @@ export default function CameraAttendance() {
     }
   }, [section])
 
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setUploadedImage(reader.result)
-        // In a real app, this would process the image for facial recognition
-        // For now, we'll just show a random selection of present students
-        setStudents(students.map(student => ({
-          ...student,
-          isPresent: Math.random() > 0.3 // 70% chance of being present
-        })))
-      }
-      reader.readAsDataURL(file)
+  const handleImageError = (error) => {
+    console.error('Error processing image:', error)
+    toast({
+      title: "Error",
+      description: "Failed to process image. Please try again with a clearer photo.",
+      variant: "destructive"
+    })
+    setProcessing(false)
+  }
+
+  const processUploadedImage = async (imageUrl) => {
+    if (!imageUrl) {
+      handleImageError(new Error('No image provided'))
+      return
+    }
+
+    setProcessing(true)
+    try {
+      const img = new Image()
+      img.crossOrigin = "anonymous"
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve
+        img.onerror = () => reject(new Error('Failed to load image'))
+        img.src = imageUrl
+      })
+      
+      const updatedStudents = await processImage(img, students)
+      setStudents(updatedStudents)
+      
+      const presentCount = updatedStudents.filter(s => s.isPresent).length
+      toast({
+        title: "Attendance Marked",
+        description: `Found ${presentCount} students in the image`
+      })
+    } catch (error) {
+      handleImageError(error)
+    } finally {
+      setProcessing(false)
     }
   }
 
-  const capture = useCallback(() => {
-    const imageSrc = webcamRef.current?.getScreenshot()
-    if (imageSrc) {
-      setUploadedImage(imageSrc)
-      // In a real app, this would process the image for facial recognition
-      // For now, we'll just show a random selection of present students
-      setStudents(students.map(student => ({
-        ...student,
-        isPresent: Math.random() > 0.3 // 70% chance of being present
-      })))
-      setShowCamera(false)
+  const handleFileUpload = (event) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    
+    reader.onload = async (e) => {
+      try {
+        const imageData = e.target?.result
+        if (typeof imageData !== 'string') {
+          throw new Error('Invalid image data')
+        }
+        setUploadedImage(imageData)
+        await processUploadedImage(imageData)
+      } catch (error) {
+        handleImageError(error)
+      }
     }
-  }, [students])
+    
+    reader.onerror = () => handleImageError(new Error('Failed to read image file'))
+    reader.readAsDataURL(file)
+  }
+
+  const capture = useCallback(async () => {
+    try {
+      const imageSrc = webcamRef.current?.getScreenshot()
+      if (!imageSrc) {
+        throw new Error('Failed to capture photo')
+      }
+      setUploadedImage(imageSrc)
+      setShowCamera(false)
+      await processUploadedImage(imageSrc)
+    } catch (error) {
+      handleImageError(error)
+    }
+  }, [])
 
   const handleTogglePresent = (studentId) => {
     setStudents(students.map(student => 
@@ -109,16 +162,55 @@ export default function CameraAttendance() {
       y += 8
     })
     
-    pdf.save(`attendance-${section}-${formatDate(dateParam)}.pdf`)
+    return pdf
   }
 
-  const shareOnWhatsApp = () => {
-    const present = students.filter(s => s.isPresent).length
-    const message = `Attendance Report for Section ${section} on ${formatDate(dateParam)}
+  const downloadPDF = () => {
+    try {
+      const pdf = exportToPDF()
+      pdf.save(`attendance-${section}-${formatDate(dateParam)}.pdf`)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const shareOnWhatsApp = async () => {
+    try {
+      const pdf = exportToPDF()
+      const pdfBlob = pdf.output('blob')
+      const pdfFile = new File([pdfBlob], `attendance-${section}-${formatDate(dateParam)}.pdf`, { type: 'application/pdf' })
+      
+      const present = students.filter(s => s.isPresent).length
+      const message = `Attendance Report for Section ${section} on ${formatDate(dateParam)}
 Present: ${present}/${students.length} students`
-    
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank')
+      
+      if (navigator.share && navigator.canShare({ files: [pdfFile] })) {
+        try {
+          await navigator.share({
+            files: [pdfFile],
+            text: message,
+            title: 'Attendance Report'
+          })
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            throw error
+          }
+        }
+      } else {
+        const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+        window.open(whatsappUrl, '_blank')
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to share attendance. Please try again.",
+        variant: "destructive"
+      })
+    }
   }
 
   return (
@@ -140,10 +232,19 @@ Present: ${present}/${students.length} students`
               className="w-full rounded-lg"
             />
             <div className="mt-4 flex gap-4">
-              <Button className="w-full" onClick={capture}>
-                Capture Photo
+              <Button 
+                className="w-full" 
+                onClick={capture}
+                disabled={processing}
+              >
+                {processing ? 'Processing...' : 'Capture Photo'}
               </Button>
-              <Button className="w-full" variant="outline" onClick={() => setShowCamera(false)}>
+              <Button 
+                className="w-full" 
+                variant="outline" 
+                onClick={() => setShowCamera(false)}
+                disabled={processing}
+              >
                 Cancel
               </Button>
             </div>
@@ -163,11 +264,13 @@ Present: ${present}/${students.length} students`
               onChange={handleFileUpload}
             />
             <div 
-              className="border-2 border-dashed rounded-lg p-8 text-center hover:bg-accent cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
+              className="relative border-2 border-dashed rounded-lg p-8 text-center hover:bg-accent cursor-pointer"
+              onClick={() => !processing && fileInputRef.current?.click()}
+              style={{ opacity: processing ? 0.5 : 1 }}
             >
               {uploadedImage ? (
                 <img 
+                  ref={imageRef}
                   src={uploadedImage} 
                   alt="Uploaded" 
                   className="max-h-48 mx-auto rounded-lg"
@@ -180,13 +283,23 @@ Present: ${present}/${students.length} students`
                   </p>
                 </>
               )}
+              {processing && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg">
+                  <p>Processing image...</p>
+                </div>
+              )}
             </div>
 
             <div className="text-center">
               <p>OR</p>
             </div>
 
-            <Button className="w-full" variant="outline" onClick={() => setShowCamera(true)}>
+            <Button 
+              className="w-full" 
+              variant="outline" 
+              onClick={() => setShowCamera(true)}
+              disabled={processing}
+            >
               <Camera className="mr-2 h-4 w-4" />
               Take Photo
             </Button>
@@ -217,7 +330,10 @@ Present: ${present}/${students.length} students`
                     type="checkbox" 
                     className="w-4 h-4" 
                     checked={student.isPresent}
-                    onChange={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      handleTogglePresent(student.id)
+                    }}
                   />
                   <div className="flex-1">
                     <p className="font-medium">{student.name}</p>
@@ -231,7 +347,7 @@ Present: ${present}/${students.length} students`
       </div>
 
       <div className="grid gap-4">
-        <Button onClick={exportToPDF} variant="outline">
+        <Button onClick={downloadPDF} variant="outline">
           <Download className="mr-2 h-4 w-4" />
           Export as PDF
         </Button>
