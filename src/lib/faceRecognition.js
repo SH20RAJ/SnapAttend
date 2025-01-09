@@ -8,8 +8,8 @@ async function loadModels() {
     // Load the BlazeFace model
     model = await blazeface.load({
       maxFaces: 10, // Detect up to 10 faces
-      inputWidth: 224,
-      inputHeight: 224,
+      inputWidth: 128,
+      inputHeight: 128,
       iouThreshold: 0.3, // Intersection over union threshold
       scoreThreshold: 0.75 // Detection confidence threshold
     });
@@ -24,16 +24,16 @@ export async function processImage(imageElement, students) {
     const img = tf.browser.fromPixels(imageElement);
     
     // Normalize and resize the image
-    const normalized = tf.div(img, 255.0);
-    const resized = tf.image.resizeBilinear(normalized, [224, 224]);
+    const resized = tf.image.resizeBilinear(img, [128, 128]);
+    const normalized = tf.div(resized, 255.0);
     
     // Run face detection
-    const predictions = await model.estimateFaces(resized, false);
+    const predictions = await model.estimateFaces(normalized, false);
     
     // Clean up tensors
     img.dispose();
-    normalized.dispose();
     resized.dispose();
+    normalized.dispose();
 
     if (!predictions || predictions.length === 0) {
       console.log('No faces detected');
