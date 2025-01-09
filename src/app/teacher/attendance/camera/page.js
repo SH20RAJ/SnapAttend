@@ -7,15 +7,15 @@ import { STUDENTS_BY_SECTION } from "@/constants/data"
 import { Camera, Download, Share, Upload } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, Suspense } from "react"
 import Webcam from "react-webcam"
 import { jsPDF } from "jspdf"
 import { formatDate, createPDFContent } from "@/lib/utils"
-import { processImage } from "@/lib/faceRecognition"
+import { processImage, drawFaceDetectionBoxes } from "@/lib/faceRecognition"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
-export default function CameraAttendance() {
+function CameraAttendanceContent() {
   const searchParams = useSearchParams()
   const section = searchParams.get('section')
   const dateParam = searchParams.get('date')
@@ -25,10 +25,12 @@ export default function CameraAttendance() {
   const [showCamera, setShowCamera] = useState(false)
   const [uploadedImage, setUploadedImage] = useState(null)
   const [processing, setProcessing] = useState(false)
-  const [showFrames, setShowFrames] = useState(false)
+  const [showFrames, setShowFrames] = useState(true)
+  const [predictions, setPredictions] = useState([])
   const webcamRef = useRef(null)
   const fileInputRef = useRef(null)
   const imageRef = useRef(null)
+  const canvasRef = useRef(null)
 
   useEffect(() => {
     if (section && STUDENTS_BY_SECTION[section]) {
@@ -39,6 +41,13 @@ export default function CameraAttendance() {
     }
   }, [section])
 
+  useEffect(() => {
+    // Draw face detection boxes when predictions change
+    if (showFrames && predictions.length > 0 && canvasRef.current) {
+      drawFaceDetectionBoxes(canvasRef.current, predictions)
+    }
+  }, [predictions, showFrames])
+
   const handleImageError = (error) => {
     console.error('Error processing image:', error)
     toast({
@@ -47,6 +56,7 @@ export default function CameraAttendance() {
       variant: "destructive"
     })
     setProcessing(false)
+    setPredictions([])
   }
 
   const processUploadedImage = async (imageUrl) => {
@@ -66,10 +76,27 @@ export default function CameraAttendance() {
         img.src = imageUrl
       })
       
-      const updatedStudents = await processImage(img, students)
-      setStudents(updatedStudents)
+      // Initialize canvas with image dimensions
+      if (canvasRef.current) {
+        canvasRef.current.width = img.width
+        canvasRef.current.height = img.height
+      }
       
-      const presentCount = updatedStudents.filter(s => s.isPresent).length
+      const result = await processImage(img, students)
+      setStudents(result)
+      
+      // Get predictions from face data
+      const newPredictions = result
+        .filter(s => s.faceData)
+        .map(s => ({
+          topLeft: s.faceData.box,
+          bottomRight: [s.faceData.box[0] + 100, s.faceData.box[1] + 100],
+          probability: [s.faceData.confidence]
+        }))
+      
+      setPredictions(newPredictions)
+      
+      const presentCount = result.filter(s => s.isPresent).length
       toast({
         title: "Attendance Marked",
         description: `Found ${presentCount} students in the image`
@@ -234,9 +261,10 @@ Present: ${present}/${students.length} students`
                 screenshotFormat="image/jpeg"
                 className="w-full rounded-lg"
               />
-              {showFrames && (
-                <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
-              )}
+              <canvas 
+                ref={canvasRef}
+                className="absolute top-0 left-0 w-full h-full pointer-events-none"
+              />
             </div>
             <div className="mt-4 space-y-4">
               <div className="flex gap-4">
@@ -294,9 +322,10 @@ Present: ${present}/${students.length} students`
                     alt="Uploaded" 
                     className="max-h-48 mx-auto rounded-lg"
                   />
-                  {showFrames && (
-                    <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
-                  )}
+                  <canvas 
+                    ref={canvasRef}
+                    className="absolute top-0 left-0 w-full h-full pointer-events-none"
+                  />
                 </div>
               ) : (
                 <>
@@ -373,6 +402,11 @@ Present: ${present}/${students.length} students`
                     <p className="font-medium">{student.name}</p>
                     <p className="text-sm text-muted-foreground">Roll: {student.rollNumber}</p>
                   </div>
+                  {student.faceData && (
+                    <div className="text-sm text-muted-foreground">
+                      Confidence: {(student.faceData.confidence * 100).toFixed(1)}%
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -391,5 +425,25 @@ Present: ${present}/${students.length} students`
         </Button>
       </div>
     </main>
+  )
+}
+
+export default function CameraAttendance() {
+  return (
+    <Suspense fallback={
+      <div className="container max-w-lg mx-auto p-4">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-accent rounded w-1/3"></div>
+          <div className="h-[200px] bg-accent rounded"></div>
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 bg-accent rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    }>
+      <CameraAttendanceContent />
+    </Suspense>
   )
 }

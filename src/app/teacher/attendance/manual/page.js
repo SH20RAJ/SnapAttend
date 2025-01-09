@@ -3,20 +3,22 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { STUDENTS_BY_SECTION, SUBJECTS } from "@/constants/data"
-import { CheckSquare, Download, Share } from "lucide-react"
+import { STUDENTS_BY_SECTION } from "@/constants/data"
+import { Download, Share } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { jsPDF } from "jspdf"
 import { formatDate, createPDFContent } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
-export default function ManualAttendance() {
+function ManualAttendanceContent() {
   const searchParams = useSearchParams()
   const section = searchParams.get('section')
   const dateParam = searchParams.get('date')
-  const [subject, setSubject] = useState("")
+  const { toast } = useToast()
+
   const [students, setStudents] = useState([])
 
   useEffect(() => {
@@ -28,13 +30,6 @@ export default function ManualAttendance() {
     }
   }, [section])
 
-  const handleMarkAllPresent = () => {
-    setStudents(students.map(student => ({
-      ...student,
-      isPresent: true
-    })))
-  }
-
   const handleTogglePresent = (studentId) => {
     setStudents(students.map(student => 
       student.id === studentId 
@@ -43,9 +38,16 @@ export default function ManualAttendance() {
     ))
   }
 
+  const handleToggleAll = (present) => {
+    setStudents(students.map(student => ({
+      ...student,
+      isPresent: present
+    })))
+  }
+
   const exportToPDF = () => {
     const pdf = new jsPDF()
-    const content = createPDFContent(students, section, dateParam, subject)
+    const content = createPDFContent(students, section, dateParam)
     
     // Set title
     pdf.setFontSize(16)
@@ -81,17 +83,55 @@ export default function ManualAttendance() {
       y += 8
     })
     
-    pdf.save(`attendance-${section}-${formatDate(dateParam)}.pdf`)
+    return pdf
   }
 
-  const shareOnWhatsApp = () => {
-    const present = students.filter(s => s.isPresent).length
-    const message = `Attendance Report for Section ${section} on ${formatDate(dateParam)}
-Subject: ${subject || 'N/A'}
+  const downloadPDF = () => {
+    try {
+      const pdf = exportToPDF()
+      pdf.save(`attendance-${section}-${formatDate(dateParam)}.pdf`)
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const shareOnWhatsApp = async () => {
+    try {
+      const pdf = exportToPDF()
+      const pdfBlob = pdf.output('blob')
+      const pdfFile = new File([pdfBlob], `attendance-${section}-${formatDate(dateParam)}.pdf`, { type: 'application/pdf' })
+      
+      const present = students.filter(s => s.isPresent).length
+      const message = `Attendance Report for Section ${section} on ${formatDate(dateParam)}
 Present: ${present}/${students.length} students`
-    
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
-    window.open(whatsappUrl, '_blank')
+      
+      if (navigator.share && navigator.canShare({ files: [pdfFile] })) {
+        try {
+          await navigator.share({
+            files: [pdfFile],
+            text: message,
+            title: 'Attendance Report'
+          })
+        } catch (error) {
+          if (error.name !== 'AbortError') {
+            throw error
+          }
+        }
+      } else {
+        const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+        window.open(whatsappUrl, '_blank')
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to share attendance. Please try again.",
+        variant: "destructive"
+      })
+    }
   }
 
   return (
@@ -103,69 +143,64 @@ Present: ${present}/${students.length} students`
         </Link>
       </div>
 
-      <div id="attendance-content">
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Class Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <p><strong>Date:</strong> {formatDate(dateParam)}</p>
-              <p><strong>Section:</strong> {section}</p>
-            </div>
-            <Select value={subject} onValueChange={setSubject}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select subject" />
-              </SelectTrigger>
-              <SelectContent>
-                {SUBJECTS.map((subject) => (
-                  <SelectItem key={subject} value={subject}>
-                    {subject}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <Card>
+        <CardHeader>
+          <CardTitle>Attendance Details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 mb-4">
+            <p><strong>Date:</strong> {formatDate(dateParam)}</p>
+            <p><strong>Section:</strong> {section}</p>
+          </div>
 
-            <Button className="w-full" variant="outline" onClick={handleMarkAllPresent}>
-              <CheckSquare className="mr-2 h-4 w-4" />
+          <div className="flex gap-2 mb-4">
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => handleToggleAll(true)}
+            >
               Mark All Present
             </Button>
-          </CardContent>
-        </Card>
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => handleToggleAll(false)}
+            >
+              Mark All Absent
+            </Button>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Student List</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {students.map((student) => (
-                <div 
-                  key={student.id} 
-                  className={`flex items-center space-x-4 p-2 rounded-lg cursor-pointer hover:bg-accent ${
-                    student.isPresent ? 'bg-accent/50' : ''
-                  }`}
-                  onClick={() => handleTogglePresent(student.id)}
-                >
-                  <Input 
-                    type="checkbox" 
-                    className="w-4 h-4" 
-                    checked={student.isPresent}
-                    onChange={(e) => e.stopPropagation()}
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium">{student.name}</p>
-                    <p className="text-sm text-muted-foreground">Roll: {student.rollNumber}</p>
-                  </div>
+          <div className="space-y-2">
+            {students.map((student) => (
+              <div 
+                key={student.id} 
+                className={cn(
+                  "flex items-center space-x-4 p-2 rounded-lg cursor-pointer hover:bg-accent",
+                  student.isPresent && "bg-accent/50"
+                )}
+                onClick={() => handleTogglePresent(student.id)}
+              >
+                <Input 
+                  type="checkbox" 
+                  className="w-4 h-4" 
+                  checked={student.isPresent}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    handleTogglePresent(student.id)
+                  }}
+                />
+                <div className="flex-1">
+                  <p className="font-medium">{student.name}</p>
+                  <p className="text-sm text-muted-foreground">Roll: {student.rollNumber}</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4">
-        <Button onClick={exportToPDF} variant="outline">
+        <Button onClick={downloadPDF} variant="outline">
           <Download className="mr-2 h-4 w-4" />
           Export as PDF
         </Button>
@@ -175,5 +210,24 @@ Present: ${present}/${students.length} students`
         </Button>
       </div>
     </main>
+  )
+}
+
+export default function ManualAttendance() {
+  return (
+    <Suspense fallback={
+      <div className="container max-w-lg mx-auto p-4">
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-accent rounded w-1/3"></div>
+          <div className="space-y-2">
+            {[...Array(10)].map((_, i) => (
+              <div key={i} className="h-12 bg-accent rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    }>
+      <ManualAttendanceContent />
+    </Suspense>
   )
 }
