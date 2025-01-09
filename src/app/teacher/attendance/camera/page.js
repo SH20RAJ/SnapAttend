@@ -13,6 +13,7 @@ import { jsPDF } from "jspdf"
 import { formatDate, createPDFContent } from "@/lib/utils"
 import { processImage } from "@/lib/faceRecognition"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 export default function CameraAttendance() {
   const searchParams = useSearchParams()
@@ -24,6 +25,7 @@ export default function CameraAttendance() {
   const [showCamera, setShowCamera] = useState(false)
   const [uploadedImage, setUploadedImage] = useState(null)
   const [processing, setProcessing] = useState(false)
+  const [showFrames, setShowFrames] = useState(false)
   const webcamRef = useRef(null)
   const fileInputRef = useRef(null)
   const imageRef = useRef(null)
@@ -225,27 +227,41 @@ Present: ${present}/${students.length} students`
       {showCamera ? (
         <Card>
           <CardContent className="p-4">
-            <Webcam
-              audio={false}
-              ref={webcamRef}
-              screenshotFormat="image/jpeg"
-              className="w-full rounded-lg"
-            />
-            <div className="mt-4 flex gap-4">
-              <Button 
-                className="w-full" 
-                onClick={capture}
-                disabled={processing}
+            <div className="relative">
+              <Webcam
+                audio={false}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                className="w-full rounded-lg"
+              />
+              {showFrames && (
+                <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+              )}
+            </div>
+            <div className="mt-4 space-y-4">
+              <div className="flex gap-4">
+                <Button 
+                  className="w-full" 
+                  onClick={capture}
+                  disabled={processing}
+                >
+                  {processing ? 'Processing...' : 'Capture Photo'}
+                </Button>
+                <Button 
+                  className="w-full" 
+                  variant="outline" 
+                  onClick={() => setShowCamera(false)}
+                  disabled={processing}
+                >
+                  Cancel
+                </Button>
+              </div>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setShowFrames(!showFrames)}
               >
-                {processing ? 'Processing...' : 'Capture Photo'}
-              </Button>
-              <Button 
-                className="w-full" 
-                variant="outline" 
-                onClick={() => setShowCamera(false)}
-                disabled={processing}
-              >
-                Cancel
+                {showFrames ? 'Hide Face Frames' : 'Show Face Frames'}
               </Button>
             </div>
           </CardContent>
@@ -264,17 +280,24 @@ Present: ${present}/${students.length} students`
               onChange={handleFileUpload}
             />
             <div 
-              className="relative border-2 border-dashed rounded-lg p-8 text-center hover:bg-accent cursor-pointer"
+              className={cn(
+                "relative border-2 border-dashed rounded-lg p-8 text-center hover:bg-accent cursor-pointer",
+                processing && "opacity-50"
+              )}
               onClick={() => !processing && fileInputRef.current?.click()}
-              style={{ opacity: processing ? 0.5 : 1 }}
             >
               {uploadedImage ? (
-                <img 
-                  ref={imageRef}
-                  src={uploadedImage} 
-                  alt="Uploaded" 
-                  className="max-h-48 mx-auto rounded-lg"
-                />
+                <div className="relative">
+                  <img 
+                    ref={imageRef}
+                    src={uploadedImage} 
+                    alt="Uploaded" 
+                    className="max-h-48 mx-auto rounded-lg"
+                  />
+                  {showFrames && (
+                    <div className="absolute inset-0 border-2 border-blue-500 rounded-lg pointer-events-none" />
+                  )}
+                </div>
               ) : (
                 <>
                   <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -303,6 +326,16 @@ Present: ${present}/${students.length} students`
               <Camera className="mr-2 h-4 w-4" />
               Take Photo
             </Button>
+
+            {uploadedImage && (
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setShowFrames(!showFrames)}
+              >
+                {showFrames ? 'Hide Face Frames' : 'Show Face Frames'}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -321,9 +354,10 @@ Present: ${present}/${students.length} students`
               {students.map((student) => (
                 <div 
                   key={student.id} 
-                  className={`flex items-center space-x-4 p-2 rounded-lg cursor-pointer hover:bg-accent ${
-                    student.isPresent ? 'bg-accent/50' : ''
-                  }`}
+                  className={cn(
+                    "flex items-center space-x-4 p-2 rounded-lg cursor-pointer hover:bg-accent",
+                    student.isPresent && "bg-accent/50"
+                  )}
                   onClick={() => handleTogglePresent(student.id)}
                 >
                   <Input 

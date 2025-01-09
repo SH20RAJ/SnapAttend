@@ -10,8 +10,13 @@ async function loadModels() {
     blazeFaceModel = await blazeface.load();
   }
   if (!faceLandmarksModel) {
-    faceLandmarksModel = await faceLandmarksDetection.load(
-      faceLandmarksDetection.SupportedPackages.mediapipeFacemesh
+    faceLandmarksModel = await faceLandmarksDetection.createDetector(
+      faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+      {
+        runtime: 'tfjs',
+        refineLandmarks: true,
+        maxFaces: 10
+      }
     );
   }
 }
@@ -32,16 +37,10 @@ export async function processImage(imageElement, students) {
     }
 
     // Get face landmarks for each detected face
-    const faceDescriptors = await Promise.all(
-      predictions.map(async (prediction) => {
-        const landmarks = await faceLandmarksModel.estimateFaces({
-          input: tensor,
-          predictIrises: false,
-          flipHorizontal: false
-        });
-        return landmarks[0]?.annotations || null;
-      })
-    );
+    const faces = await faceLandmarksModel.estimateFaces(tensor, {
+      flipHorizontal: false,
+      staticImageMode: true
+    });
 
     tensor.dispose();
 
@@ -50,7 +49,7 @@ export async function processImage(imageElement, students) {
     // 1. Store face descriptors for each student during registration
     // 2. Compare detected faces with stored descriptors using cosine similarity
     // 3. Match students based on the most similar face descriptor
-    const numFaces = predictions.length;
+    const numFaces = faces.length;
     
     // Randomly mark students as present based on number of faces detected
     const presentIndices = new Set();
@@ -85,31 +84,34 @@ function extractDescriptorFromLandmarks(landmarks) {
   // you would use more sophisticated feature extraction
   const features = [];
   
-  if (landmarks) {
-    // Extract relative positions of key facial landmarks
-    const nose = landmarks.noseTip?.[0] || [0, 0, 0];
-    const leftEye = landmarks.leftEyeUpper0?.[0] || [0, 0, 0];
-    const rightEye = landmarks.rightEyeUpper0?.[0] || [0, 0, 0];
-    const mouth = landmarks.lipsUpperOuter?.[0] || [0, 0, 0];
+  if (landmarks && landmarks.keypoints) {
+    // Get key facial landmarks
+    const keypoints = landmarks.keypoints;
+    const nose = keypoints.find(k => k.name === 'noseTip');
+    const leftEye = keypoints.find(k => k.name === 'leftEye');
+    const rightEye = keypoints.find(k => k.name === 'rightEye');
+    const mouth = keypoints.find(k => k.name === 'mouth');
     
-    // Calculate relative distances and angles
-    features.push(
-      // Distance between eyes
-      Math.sqrt(
-        Math.pow(leftEye[0] - rightEye[0], 2) +
-        Math.pow(leftEye[1] - rightEye[1], 2)
-      ),
-      // Distance from nose to mouth
-      Math.sqrt(
-        Math.pow(nose[0] - mouth[0], 2) +
-        Math.pow(nose[1] - mouth[1], 2)
-      ),
-      // Angle of eyes relative to horizontal
-      Math.atan2(rightEye[1] - leftEye[1], rightEye[0] - leftEye[0]),
-      // Relative position of nose between eyes
-      (nose[0] - leftEye[0]) / (rightEye[0] - leftEye[0]),
-      (nose[1] - leftEye[1]) / (rightEye[1] - leftEye[1])
-    );
+    if (nose && leftEye && rightEye && mouth) {
+      // Calculate relative distances and angles
+      features.push(
+        // Distance between eyes
+        Math.sqrt(
+          Math.pow(leftEye.x - rightEye.x, 2) +
+          Math.pow(leftEye.y - rightEye.y, 2)
+        ),
+        // Distance from nose to mouth
+        Math.sqrt(
+          Math.pow(nose.x - mouth.x, 2) +
+          Math.pow(nose.y - mouth.y, 2)
+        ),
+        // Angle of eyes relative to horizontal
+        Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x),
+        // Relative position of nose between eyes
+        (nose.x - leftEye.x) / (rightEye.x - leftEye.x),
+        (nose.y - leftEye.y) / (rightEye.y - leftEye.y)
+      );
+    }
   }
   
   // Pad or truncate to ensure fixed length
